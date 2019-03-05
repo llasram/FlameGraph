@@ -584,8 +584,11 @@ sub flow {
 	for ($i = $len_same; $i <= $len_b; $i++) {
 		my $k = "$this->[$i];$i";
 		$Tmp{$k}->{stime} = $v;
-		if (defined $d) {
-			$Tmp{$k}->{delta} += $i == $len_b ? $d : 0;
+	}
+	if (defined $d) {
+		for ($i = 0; $i <= $len_b; $i++) {
+			my $k = "$this->[$i];$i";
+			$Tmp{$k}->{delta} += $d;
 		}
 	}
 
@@ -597,6 +600,7 @@ my @Data;
 my @SortedData;
 my $last = [];
 my $time = 0;
+my $otime = 0;
 my $delta = undef;
 my $ignored = 0;
 my $line;
@@ -673,6 +677,7 @@ foreach (@SortedData) {
 
 	if (defined $samples2) {
 		$time += $samples2;
+		$otime += $samples;
 	} else {
 		$time += $samples;
 	}
@@ -1073,7 +1078,7 @@ if ($palette) {
 
 # draw frames
 $im->group_start({id => "frames"});
-while (my ($id, $node) = each %Node) {
+while (my ($id, $node) = each %Node) { 
 	my ($func, $depth, $etime) = split ";", $id;
 	my $stime = $node->{stime};
 	my $delta = $node->{delta};
@@ -1096,25 +1101,36 @@ while (my ($id, $node) = each %Node) {
 		=~ s/(^[-+]?\d+?(?=(?>(?:\d{3})+)(?!\d))|\G\d{3}(?=\d))/$1,/g;
 
 	my $info;
+	my $pct;
+	my $escaped_func;
 	if ($func eq "" and $depth == 0) {
-		$info = "all ($samples_txt $countname, 100%)";
+		$pct = "100.00";
+		$escaped_func = "all"
 	} else {
-		my $pct = sprintf "%.2f", ((100 * $samples) / ($timemax * $factor));
-		my $escaped_func = $func;
+		$pct = sprintf "%.2f", ((100 * $samples) / ($timemax * $factor));
+		$escaped_func = $func;
 		# clean up SVG breaking characters:
 		$escaped_func =~ s/&/&amp;/g;
 		$escaped_func =~ s/</&lt;/g;
 		$escaped_func =~ s/>/&gt;/g;
 		$escaped_func =~ s/"/&quot;/g;
 		$escaped_func =~ s/_\[[kwij]\]$//;	# strip any annotation
-		unless (defined $delta) {
-			$info = "$escaped_func ($samples_txt $countname, $pct%)";
-		} else {
-			my $d = $negate ? -$delta : $delta;
-			my $deltapct = sprintf "%.2f", ((100 * $d) / ($timemax * $factor));
-			$deltapct = $d > 0 ? "+$deltapct" : $deltapct;
-			$info = "$escaped_func ($samples_txt $countname, $pct%; $deltapct%)";
-		}
+	}
+	unless (defined $delta) {
+		$info = "$escaped_func ($samples_txt $countname, $pct%)";
+	} else {
+		my $fdelta = sprintf "%.0f", $delta * $factor;
+		my $sign = $negate ? -1 : 1;
+		my $dtime = $negate ? $timemax : $otime;
+		my $osamples = $samples - $fdelta;
+		my $deltapct = $sign * (100 * $fdelta) / ($dtime * $factor);
+		$deltapct = sprintf "%.2f", $deltapct;
+		$deltapct = $deltapct > 0 ? "+$deltapct" : "$deltapct";
+		my $delta_txt = sprintf "%.0f", ($sign * $fdelta);
+		$delta_txt = $delta_txt > 0 ? "+$delta_txt" : "$delta_txt";
+		$delta_txt =~ s/(^[-+]?\d+?(?=(?>(?:\d{3})+)(?!\d))|\G\d{3}(?=\d))/$1,/g;
+		$info = "$escaped_func ($samples_txt $countname, $pct%;"
+		    . " $delta_txt $countname, $deltapct%)";
 	}
 
 	my $nameattr = { %{ $nameattr{$func}||{} } }; # shallow clone
